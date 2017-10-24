@@ -1,0 +1,86 @@
+  // Parameters
+  real Ra = 100*1708;	// Rayleigh number
+  real Pr = 6.8;	    // Prandtl number
+
+  // Settings
+  string prefix = "01";
+  real dt = 1.e-3;	// time step
+  real ds = 2.e-2;	// discretisation in space
+  int steps = 250;	// number of iterations
+  real L = 3.2;		// length of the box
+
+  // Mesh
+  mesh Mesh = square(L/ds,1/ds,[L*x,y]);
+  plot(Mesh,ps=prefix+".png");
+
+  // Vectorial spaces
+  fespace Uspace(Mesh,P1b);	// for velocity
+  fespace PTspace(Mesh,P1);	// for pressure and temperature
+
+  // Variables
+  Uspace	ux,tux,uxo=0.,
+            uy,tuy,uyo=0.;
+  PTspace	p,tp,
+            t,tt,to=0.;
+       
+  // Auxiliar variables
+  PTspace w;	// vorticity
+  string msg, filename;
+  bool draw;
+
+  // Problems
+  problem NavierStokes([ux,uy,p],[tux,tuy,tp]) =
+      // eq1
+       int2d(Mesh)( (ux*tux+uy*tuy)/dt )	// u / dt
+      -int2d(Mesh)( (convect([uxo,uyo],-dt,uxo)*tux+convect([uxo,uyo],-dt,uyo)*tuy)/dt )	// - u0 o X / dt
+      +int2d(Mesh)( Pr*(dx(ux)*dx(tux) +dy(ux)*dy(tux) +dx(uy)*dx(tuy) +dy(uy)*dy(tuy)) )
+      //+int2d(Mesh)( Pr*(dx(ux)*dx(tux) +dx(uy)*dy(tux) +dy(ux)*dx(tuy) +dy(uy)*dy(tuy)) )	// - Pr \/2 u
+      -int2d(Mesh)( p*(dx(tux)+dy(tuy)) )	// + \/p
+      -int2d(Mesh)( Ra*Pr*to*tuy )	// - Ra * Pr * t * ey
+      // eq2
+      +int2d(Mesh)( tp*(dx(ux)+dy(uy)) )	// \/ . u
+      // bc
+      +on(1,3,ux=0.,uy=0.);
+  
+  problem Temperature([t],[tt]) =
+      // eq3
+       int2d(Mesh)( t*tt/dt ) // t / dt
+      -int2d(Mesh)( convect([uxo,uyo],-dt,to)*tt/dt ) // -t0 o X / dt
+      +int2d(Mesh)( dx(t)*dx(tt) +dy(t)*dy(tt) ) // - \/2 t
+      // bc
+      +on(1,t=1.);
+
+  // Time march
+  for (int i=1;i<=steps;i++) {
+
+      msg = "Ra "+Ra+", Pr "+Pr+", step "+i;
+      cout << msg << "/"+steps << endl;
+
+      Temperature;
+      to = t;
+      
+      NavierStokes;
+      uxo = ux;
+      uyo = uy;
+
+      draw = true;
+      if (draw) {
+      	filename = prefix+"/";
+        if (i<1e3) filename = filename+"0";
+        if (i<1e2) filename = filename+"0";
+        if (i<1e1) filename = filename+"0";
+        filename = filename+i;
+        
+        // Velocity plot
+        plot([ux,uy],cmm=msg,nbarrow=256,nbiso=256,ps="u/"+filename+".png",ArrowSize=-2.9);
+        
+		// Temperature plot
+        plot(t,grey=1,cmm=msg,nbarrow=256,nbiso=256,fill=1,value=false,ps="t/"+filename+".png");
+        
+        // Vorticity computation and plot
+      	w = dy(uxo)-dx(uyo);
+        plot(w,cmm="Ra "+Ra+", Pr "+Pr+", step "+i,nbarrow=256,nbiso=256,fill=1,value=false,ps="w/"+filename+".png");
+        
+      }
+  }
+  
